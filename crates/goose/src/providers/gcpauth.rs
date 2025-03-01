@@ -7,7 +7,6 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use std::{env, fmt, io};
 use tokio::sync::RwLock;
 
-
 /// Represents errors that can occur during GCP authentication.
 ///
 /// This enum encompasses various error conditions that might arise during
@@ -163,7 +162,12 @@ impl AdcCredentials {
     /// 2. Default gcloud credentials path (~/.config/gcloud/application_default_credentials.json)
     /// 3. Metadata server if running in GCP
     async fn load() -> Result<Self, AuthError> {
-        Self::load_impl(&RealFilesystemOps, &RealEnvOps, "http://metadata.google.internal").await
+        Self::load_impl(
+            &RealFilesystemOps,
+            &RealEnvOps,
+            "http://metadata.google.internal",
+        )
+        .await
     }
 
     async fn load_impl(
@@ -190,35 +194,49 @@ impl AdcCredentials {
             return Ok(creds);
         }
 
-        Err(AuthError::CredentialsError("No valid credentials found in any location".to_string()))
+        Err(AuthError::CredentialsError(
+            "No valid credentials found in any location".to_string(),
+        ))
     }
 
     async fn load_from_file(fs_ops: &impl FilesystemOps, path: &str) -> Result<Self, AuthError> {
-        let content = fs_ops.read_to_string(path.to_string())
-            .await
-            .map_err(|e| AuthError::CredentialsError(
-                format!("Failed to read credentials from {}: {}", path, e)
-            ))?;
+        let content = fs_ops.read_to_string(path.to_string()).await.map_err(|e| {
+            AuthError::CredentialsError(format!("Failed to read credentials from {}: {}", path, e))
+        })?;
 
         serde_json::from_str(&content)
             .map_err(|e| AuthError::CredentialsError(format!("Invalid credentials format: {}", e)))
     }
 
     fn get_env_credentials_path(env_ops: &impl EnvOps) -> Result<String, AuthError> {
-        env_ops.get_var("GOOGLE_APPLICATION_CREDENTIALS")
-            .map_err(|_| AuthError::CredentialsError("GOOGLE_APPLICATION_CREDENTIALS not set".to_string()))
+        env_ops
+            .get_var("GOOGLE_APPLICATION_CREDENTIALS")
+            .map_err(|_| {
+                AuthError::CredentialsError("GOOGLE_APPLICATION_CREDENTIALS not set".to_string())
+            })
     }
 
     fn get_default_credentials_path(env_ops: &impl EnvOps) -> Result<String, AuthError> {
         let (env_var, subpath) = if cfg!(windows) {
             ("APPDATA", "gcloud\\application_default_credentials.json")
         } else {
-            ("HOME", ".config/gcloud/application_default_credentials.json")
+            (
+                "HOME",
+                ".config/gcloud/application_default_credentials.json",
+            )
         };
 
-        env_ops.get_var(env_var)
-            .map(|dir| PathBuf::from(dir).join(subpath).to_string_lossy().into_owned())
-            .map_err(|_| AuthError::CredentialsError("Could not determine user home directory".to_string()))
+        env_ops
+            .get_var(env_var)
+            .map(|dir| {
+                PathBuf::from(dir)
+                    .join(subpath)
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .map_err(|_| {
+                AuthError::CredentialsError("Could not determine user home directory".to_string())
+            })
     }
 
     async fn load_from_metadata_server(base_url: &str) -> Result<Self, AuthError> {
@@ -230,19 +248,20 @@ impl AdcCredentials {
             .header("Metadata-Flavor", "Google")
             .send()
             .await
-            .map_err(|e| AuthError::CredentialsError(format!("Metadata server request failed: {}", e)))?;
+            .map_err(|e| {
+                AuthError::CredentialsError(format!("Metadata server request failed: {}", e))
+            })?;
 
         if !response.status().is_success() {
             return Err(AuthError::CredentialsError(
-                "Not running on GCP or metadata server unavailable".to_string()
+                "Not running on GCP or metadata server unavailable".to_string(),
             ));
         }
 
         // Get the identity token and credentials from metadata server
-        let token_response = response
-            .json::<TokenResponse>()
-            .await
-            .map_err(|e| AuthError::CredentialsError(format!("Invalid metadata response: {}", e)))?;
+        let token_response = response.json::<TokenResponse>().await.map_err(|e| {
+            AuthError::CredentialsError(format!("Invalid metadata response: {}", e))
+        })?;
 
         // Note: When using metadata server, we have access to the OAuth2 access token
         // that can be used to authenticate applications.
@@ -376,7 +395,7 @@ impl GcpAuth {
         let token_response = match &self.credentials {
             AdcCredentials::ServiceAccount(creds) => self.get_service_account_token(creds).await?,
             AdcCredentials::AuthorizedUser(creds) => self.get_authorized_user_token(creds).await?,
-            AdcCredentials::DefaultAccount(creds        ) => self.get_default_access_token(creds).await?,
+            AdcCredentials::DefaultAccount(creds) => self.get_default_access_token(creds).await?,
         };
 
         let auth_token = AuthToken {
@@ -388,9 +407,10 @@ impl GcpAuth {
             token_value: token_response.access_token,
         };
 
-        let expires_at = Instant::now() + Duration::from_secs(
-            token_response.expires_in.saturating_sub(30) // 30 second buffer
-        );
+        let expires_at = Instant::now()
+            + Duration::from_secs(
+                token_response.expires_in.saturating_sub(30), // 30 second buffer
+            );
 
         *token_guard = Some(CachedToken {
             token: auth_token.clone(),
@@ -425,8 +445,12 @@ impl GcpAuth {
         let encoding_key = EncodingKey::from_rsa_pem(creds.private_key.as_bytes())
             .map_err(|e| AuthError::TokenCreationError(format!("Invalid private key: {}", e)))?;
 
-        encode(&Header::new(jsonwebtoken::Algorithm::RS256), &claims, &encoding_key)
-            .map_err(|e| AuthError::TokenCreationError(format!("Failed to create JWT: {}", e)))
+        encode(
+            &Header::new(jsonwebtoken::Algorithm::RS256),
+            &claims,
+            &encoding_key,
+        )
+        .map_err(|e| AuthError::TokenCreationError(format!("Failed to create JWT: {}", e)))
     }
 
     /// Exchanges a token or assertion for an access token.
@@ -442,7 +466,8 @@ impl GcpAuth {
         token_uri: &str,
         params: &[(&str, &str)],
     ) -> Result<TokenResponse, AuthError> {
-        let response = self.client
+        let response = self
+            .client
             .post(token_uri)
             .form(params)
             .send()
@@ -457,8 +482,7 @@ impl GcpAuth {
                 .unwrap_or_else(|_| "Unknown error".to_string());
             return Err(AuthError::TokenExchangeError(format!(
                 "Status {}: {}",
-                status,
-                error_text
+                status, error_text
             )));
         }
 
@@ -630,7 +654,8 @@ tgBJmh9PW84RqJm8BNMguUBzUWId4Nh1xDJtI+Klhx8YA2Sfx7nHkabQLAkolmAW
 g/kWgQ+sZowHm8h9KJ84ojqC1LeZKjnvhINPGCXM8JhzPOABsDfl5fNFeK5+xOSG
 erYuWN1BB3Dl3Pal75Ryu7vqk/0uumdRWfqOkf4wgUIZvD+mRdngT9QmK9doT8z7
 iXVBc2YmAuU8hiOFUPxtyQfNzG5fQ0rhJSewdtyWxIadJSLj6fsK+AEsNQ==
------END RSA PRIVATE KEY-----".to_string(),
+-----END RSA PRIVATE KEY-----"
+                .to_string(),
             token_uri: "https://oauth2.googleapis.com/token".to_string(),
         }
     }
@@ -697,13 +722,14 @@ iXVBc2YmAuU8hiOFUPxtyQfNzG5fQ0rhJSewdtyWxIadJSLj6fsK+AEsNQ==
 
     #[tokio::test]
     async fn test_invalid_credentials() {
-        let auth = create_test_auth_with_creds(
-            AdcCredentials::ServiceAccount(ServiceAccountCredentials {
+        let auth = create_test_auth_with_creds(AdcCredentials::ServiceAccount(
+            ServiceAccountCredentials {
                 client_email: "".to_string(),
                 private_key: "invalid".to_string(),
                 token_uri: "https://invalid.example.com".to_string(),
-            })
-        ).await;
+            },
+        ))
+        .await;
 
         let result = auth.get_token().await;
         assert!(result.is_err());
@@ -768,16 +794,22 @@ iXVBc2YmAuU8hiOFUPxtyQfNzG5fQ0rhJSewdtyWxIadJSLj6fsK+AEsNQ==
                 match result {
                     Ok(token) => {
                         // Should be the cached token since we can't actually exchange tokens in tests
-                        assert_eq!(token.token_value, "about_to_expire",
-                                   "Expected cached token, got: {}", token.token_value);
-                    },
+                        assert_eq!(
+                            token.token_value, "about_to_expire",
+                            "Expected cached token, got: {}",
+                            token.token_value
+                        );
+                    }
                     Err(e) => {
                         match e {
                             AuthError::TokenExchangeError(err) => {
                                 // This is expected - we can't actually exchange tokens in tests
-                                assert!(err.contains("invalid_scope") || err.contains("400"),
-                                        "Unexpected error message: {}", err);
-                            },
+                                assert!(
+                                    err.contains("invalid_scope") || err.contains("400"),
+                                    "Unexpected error message: {}",
+                                    err
+                                );
+                            }
                             other => panic!("Unexpected error type: {:?}", other),
                         }
                     }
@@ -820,7 +852,11 @@ iXVBc2YmAuU8hiOFUPxtyQfNzG5fQ0rhJSewdtyWxIadJSLj6fsK+AEsNQ==
         assert!(jwt.is_ok(), "JWT creation failed: {:?}", jwt.err());
         let jwt_str = jwt.unwrap();
         assert!(jwt_str.starts_with("ey"), "JWT should start with 'ey'");
-        assert_eq!(jwt_str.matches('.').count(), 2, "JWT should have exactly 2 dots");
+        assert_eq!(
+            jwt_str.matches('.').count(),
+            2,
+            "JWT should have exactly 2 dots"
+        );
     }
 
     #[tokio::test]
@@ -828,7 +864,8 @@ iXVBc2YmAuU8hiOFUPxtyQfNzG5fQ0rhJSewdtyWxIadJSLj6fsK+AEsNQ==
         let mut context = TestContext::new();
 
         // Mock environment variable
-        context.env_mock
+        context
+            .env_mock
             .expect_get_var()
             .with(eq("GOOGLE_APPLICATION_CREDENTIALS"))
             .times(1)
@@ -842,17 +879,19 @@ iXVBc2YmAuU8hiOFUPxtyQfNzG5fQ0rhJSewdtyWxIadJSLj6fsK+AEsNQ==
             "token_uri": "https://oauth2.googleapis.com/token"
         }"#;
 
-        context.fs_mock
+        context
+            .fs_mock
             .expect_read_to_string()
-            .with(eq("/path/to/credentials.json".to_string()))  // Convert to String
+            .with(eq("/path/to/credentials.json".to_string())) // Convert to String
             .times(1)
             .return_once(move |_| Ok(creds_content.to_string()));
 
         let result = AdcCredentials::load_impl(
             &context.fs_mock,
             &context.env_mock,
-            "http://metadata.example.com"
-        ).await;
+            "http://metadata.example.com",
+        )
+        .await;
 
         assert!(result.is_ok());
         if let Ok(AdcCredentials::ServiceAccount(sa)) = result {
@@ -868,14 +907,16 @@ iXVBc2YmAuU8hiOFUPxtyQfNzG5fQ0rhJSewdtyWxIadJSLj6fsK+AEsNQ==
         let mut context = TestContext::new();
 
         // Mock environment variables
-        context.env_mock
+        context
+            .env_mock
             .expect_get_var()
             .with(eq("GOOGLE_APPLICATION_CREDENTIALS"))
             .times(1)
             .return_once(|_| Err(env::VarError::NotPresent));
 
         let home_var = if cfg!(windows) { "APPDATA" } else { "HOME" };
-        context.env_mock
+        context
+            .env_mock
             .expect_get_var()
             .with(eq(home_var))
             .times(1)
@@ -895,7 +936,8 @@ iXVBc2YmAuU8hiOFUPxtyQfNzG5fQ0rhJSewdtyWxIadJSLj6fsK+AEsNQ==
             "/home/testuser/.config/gcloud/application_default_credentials.json".to_string()
         };
 
-        context.fs_mock
+        context
+            .fs_mock
             .expect_read_to_string()
             .with(eq(expected_path.clone())) // Use clone() to avoid borrowing issues
             .times(1)
@@ -904,8 +946,9 @@ iXVBc2YmAuU8hiOFUPxtyQfNzG5fQ0rhJSewdtyWxIadJSLj6fsK+AEsNQ==
         let result = AdcCredentials::load_impl(
             &context.fs_mock,
             &context.env_mock,
-            "http://metadata.example.com"
-        ).await;
+            "http://metadata.example.com",
+        )
+        .await;
 
         assert!(result.is_ok());
         if let Ok(AdcCredentials::AuthorizedUser(au)) = result {
@@ -922,14 +965,16 @@ iXVBc2YmAuU8hiOFUPxtyQfNzG5fQ0rhJSewdtyWxIadJSLj6fsK+AEsNQ==
         let mut context = TestContext::new();
 
         // Mock environment variable lookups to fail
-        context.env_mock
+        context
+            .env_mock
             .expect_get_var()
             .with(eq("GOOGLE_APPLICATION_CREDENTIALS"))
             .times(1)
             .return_once(|_| Err(env::VarError::NotPresent));
 
         let home_var = if cfg!(windows) { "APPDATA" } else { "HOME" };
-        context.env_mock
+        context
+            .env_mock
             .expect_get_var()
             .with(eq(home_var))
             .times(1)
@@ -937,7 +982,10 @@ iXVBc2YmAuU8hiOFUPxtyQfNzG5fQ0rhJSewdtyWxIadJSLj6fsK+AEsNQ==
 
         // Initialize mock server
         let context = context.with_metadata_server().await;
-        let mock_server = context.mock_server.as_ref().expect("Mock server should be initialized");
+        let mock_server = context
+            .mock_server
+            .as_ref()
+            .expect("Mock server should be initialized");
 
         // Define expected token values
         let expected_token = "test_token";
@@ -946,28 +994,29 @@ iXVBc2YmAuU8hiOFUPxtyQfNzG5fQ0rhJSewdtyWxIadJSLj6fsK+AEsNQ==
 
         // Configure mock response
         Mock::given(method("GET"))
-            .and(path("/computeMetadata/v1/instance/service-accounts/default/token"))
+            .and(path(
+                "/computeMetadata/v1/instance/service-accounts/default/token",
+            ))
             .and(header("Metadata-Flavor", "Google"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_json(serde_json::json!({
-                    "access_token": expected_token,
-                    "expires_in": expected_expires,
-                    "token_type": expected_type,
-                }))
-            )
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "access_token": expected_token,
+                "expires_in": expected_expires,
+                "token_type": expected_type,
+            })))
             .mount(mock_server)
             .await;
 
         // Execute the code under test
-        let result = AdcCredentials::load_impl(
-            &context.fs_mock,
-            &context.env_mock,
-            &mock_server.uri()
-        ).await;
+        let result =
+            AdcCredentials::load_impl(&context.fs_mock, &context.env_mock, &mock_server.uri())
+                .await;
 
         // Assertions
-        assert!(result.is_ok(), "Expected successful result, got {:?}", result);
+        assert!(
+            result.is_ok(),
+            "Expected successful result, got {:?}",
+            result
+        );
 
         if let Ok(AdcCredentials::DefaultAccount(token_response)) = result {
             assert_eq!(token_response.access_token, expected_token);
@@ -983,14 +1032,16 @@ iXVBc2YmAuU8hiOFUPxtyQfNzG5fQ0rhJSewdtyWxIadJSLj6fsK+AEsNQ==
         let mut context = TestContext::new();
 
         // Mock GOOGLE_APPLICATION_CREDENTIALS environment variable
-        context.env_mock
+        context
+            .env_mock
             .expect_get_var()
             .with(eq("GOOGLE_APPLICATION_CREDENTIALS"))
             .times(1)
             .return_once(|_| Ok("/path/to/credentials.json".to_string()));
 
         // Mock filesystem read for the invalid credentials file
-        context.fs_mock
+        context
+            .fs_mock
             .expect_read_to_string()
             .with(eq("/path/to/credentials.json".to_string()))
             .times(1)
@@ -998,7 +1049,8 @@ iXVBc2YmAuU8hiOFUPxtyQfNzG5fQ0rhJSewdtyWxIadJSLj6fsK+AEsNQ==
 
         // Mock HOME/APPDATA environment variable
         let home_var = if cfg!(windows) { "APPDATA" } else { "HOME" };
-        context.env_mock
+        context
+            .env_mock
             .expect_get_var()
             .with(eq(home_var))
             .times(1)
@@ -1010,17 +1062,24 @@ iXVBc2YmAuU8hiOFUPxtyQfNzG5fQ0rhJSewdtyWxIadJSLj6fsK+AEsNQ==
         } else {
             "/home/user/.config/gcloud/application_default_credentials.json"
         };
-        context.fs_mock
+        context
+            .fs_mock
             .expect_read_to_string()
             .with(eq(default_creds_path.to_string()))
             .times(1)
-            .return_once(|_| Err(std::io::Error::new(std::io::ErrorKind::NotFound, "File not found")));
+            .return_once(|_| {
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    "File not found",
+                ))
+            });
 
         let result = AdcCredentials::load_impl(
             &context.fs_mock,
             &context.env_mock,
-            "http://metadata.example.com"
-        ).await;
+            "http://metadata.example.com",
+        )
+        .await;
 
         assert!(matches!(result, Err(AuthError::CredentialsError(_))));
     }
@@ -1030,19 +1089,26 @@ iXVBc2YmAuU8hiOFUPxtyQfNzG5fQ0rhJSewdtyWxIadJSLj6fsK+AEsNQ==
         let mut context = TestContext::new();
 
         // Mock all credential sources to fail
-        context.env_mock
+        context
+            .env_mock
             .expect_get_var()
             .with(eq("GOOGLE_APPLICATION_CREDENTIALS"))
             .times(1)
             .return_once(|_| Err(env::VarError::NotPresent));
 
-        context.env_mock
+        context
+            .env_mock
             .expect_get_var()
             .with(eq(if cfg!(windows) { "APPDATA" } else { "HOME" }))
             .times(1)
             .return_once(|_| Err(env::VarError::NotPresent));
 
-        let result = AdcCredentials::load_impl(&context.fs_mock, &context.env_mock, "http://metadata.example.com").await;
+        let result = AdcCredentials::load_impl(
+            &context.fs_mock,
+            &context.env_mock,
+            "http://metadata.example.com",
+        )
+        .await;
         assert!(matches!(result, Err(AuthError::CredentialsError(_))));
     }
 }

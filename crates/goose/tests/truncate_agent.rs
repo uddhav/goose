@@ -7,15 +7,9 @@ use goose::message::Message;
 use goose::model::ModelConfig;
 use goose::providers::base::Provider;
 use goose::providers::{
-    anthropic::AnthropicProvider,
-    azure::AzureProvider,
-    bedrock::BedrockProvider,
-    databricks::DatabricksProvider,
-    gcpvertexai::GcpVertexAIProvider,
-    google::GoogleProvider,
-    groq::GroqProvider,
-    ollama::OllamaProvider,
-    openai::OpenAiProvider,
+    anthropic::AnthropicProvider, azure::AzureProvider, bedrock::BedrockProvider,
+    databricks::DatabricksProvider, gcpvertexai::GcpVertexAIProvider, google::GoogleProvider,
+    groq::GroqProvider, ollama::OllamaProvider, openai::OpenAiProvider,
     openrouter::OpenRouterProvider,
 };
 
@@ -307,6 +301,6 @@ mod tests {
             model: "claude-3-5-sonnet-v2@20241022",
             context_window: 200_000,
         })
-            .await
+        .await
     }
 }

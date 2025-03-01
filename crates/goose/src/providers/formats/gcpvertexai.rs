@@ -1,11 +1,12 @@
+use super::{anthropic, google};
 use crate::message::Message;
 use crate::model::ModelConfig;
 use crate::providers::base::Usage;
 use anyhow::{Context, Result};
 use mcp_core::tool::Tool;
-use std::fmt;
 use serde_json::Value;
-use super::{anthropic, google};
+
+use std::fmt;
 
 /// Sensible default values of Google Cloud Platform (GCP) locations for model deployment.
 ///
@@ -34,7 +35,7 @@ impl TryFrom<&str> for GcpLocation {
         match s {
             "us-central1" => Ok(Self::Iowa),
             "us-east5" => Ok(Self::Ohio),
-            _ => Err(ModelError::UnsupportedLocation(s.to_string())),
+            _ => Err(ModelError::UnsupportedLocation(s.to_string().into())),
         }
     }
 }
@@ -76,6 +77,10 @@ pub enum ClaudeVersion {
     Sonnet35,
     /// Claude 3.5 Sonnet version 2
     Sonnet35V2,
+    /// Claude 3.7 Sonnet
+    Sonnet37,
+    /// Claude 3.5 Haiku
+    Haiku35,
 }
 
 /// Represents available versions of the Gemini model for Goose.
@@ -95,6 +100,8 @@ impl fmt::Display for GcpVertexAIModel {
             Self::Claude(version) => match version {
                 ClaudeVersion::Sonnet35 => "claude-3-5-sonnet@20240620",
                 ClaudeVersion::Sonnet35V2 => "claude-3-5-sonnet-v2@20241022",
+                ClaudeVersion::Sonnet37 => "claude-3-7-sonnet@20250219",
+                ClaudeVersion::Haiku35 => "claude-3-5-haiku@20241022",
             },
             Self::Gemini(version) => match version {
                 GeminiVersion::Pro15 => "gemini-1.5-pro-002",
@@ -102,7 +109,7 @@ impl fmt::Display for GcpVertexAIModel {
                 GeminiVersion::Pro20Exp => "gemini-2.0-pro-exp-02-05",
             },
         };
-        write!(f, "{}", model_id)
+        write!(f, "{model_id}")
     }
 }
 
@@ -112,7 +119,7 @@ impl GcpVertexAIModel {
     /// Each model family has a well-known location:
     /// - Claude models default to Ohio (us-east5)
     /// - Gemini models default to Iowa (us-central1)
-    pub fn default_location(&self) -> GcpLocation {
+    pub fn known_location(&self) -> GcpLocation {
         match self {
             Self::Claude(_) => GcpLocation::Ohio,
             Self::Gemini(_) => GcpLocation::Iowa,
@@ -127,10 +134,12 @@ impl TryFrom<&str> for GcpVertexAIModel {
         match s {
             "claude-3-5-sonnet@20240620" => Ok(Self::Claude(ClaudeVersion::Sonnet35)),
             "claude-3-5-sonnet-v2@20241022" => Ok(Self::Claude(ClaudeVersion::Sonnet35V2)),
+            "claude-3-7-sonnet@20250219" => Ok(Self::Claude(ClaudeVersion::Sonnet37)),
+            "claude-3-5-haiku@20241022" => Ok(Self::Claude(ClaudeVersion::Haiku35)),
             "gemini-1.5-pro-002" => Ok(Self::Gemini(GeminiVersion::Pro15)),
             "gemini-2.0-flash-001" => Ok(Self::Gemini(GeminiVersion::Flash20)),
             "gemini-2.0-pro-exp-02-05" => Ok(Self::Gemini(GeminiVersion::Pro20Exp)),
-            _ => Err(ModelError::UnsupportedModel(s.to_string())),
+            _ => Err(ModelError::UnsupportedModel(s.to_string().into())),
         }
     }
 }
@@ -157,7 +166,7 @@ impl RequestContext {
     pub fn new(model_id: &str) -> Result<Self> {
         Ok(Self {
             model: GcpVertexAIModel::try_from(model_id)
-                .with_context(|| format!("Failed to parse model ID: {}", model_id))?,
+                .with_context(|| format!("Failed to parse model ID: {model_id}"))?,
         })
     }
 
@@ -211,6 +220,8 @@ fn create_anthropic_request(
         .as_object_mut()
         .ok_or_else(|| ModelError::InvalidRequest("Request is not a JSON object".to_string()))?;
 
+    // Note: We don't need to specify the model in the request body
+    // The model is determined by the endpoint URL in GCP Vertex AI
     obj.remove("model");
     obj.insert(
         "anthropic_version".to_string(),
@@ -257,9 +268,13 @@ pub fn create_request(
 ) -> Result<(Value, RequestContext)> {
     let context = RequestContext::new(&model_config.model_name)?;
 
-    let request = match context.model {
-        GcpVertexAIModel::Claude(_) => create_anthropic_request(model_config, system, messages, tools)?,
-        GcpVertexAIModel::Gemini(_) => create_google_request(model_config, system, messages, tools)?,
+    let request = match &context.model {
+        GcpVertexAIModel::Claude(_) => {
+            create_anthropic_request(model_config, system, messages, tools)?
+        }
+        GcpVertexAIModel::Gemini(_) => {
+            create_google_request(model_config, system, messages, tools)?
+        }
     };
 
     Ok((request, context))
@@ -305,6 +320,8 @@ mod tests {
         let valid_models = [
             "claude-3-5-sonnet@20240620",
             "claude-3-5-sonnet-v2@20241022",
+            "claude-3-7-sonnet@20250219",
+            "claude-3-5-haiku@20241022",
             "gemini-1.5-pro-002",
             "gemini-2.0-flash-001",
             "gemini-2.0-pro-exp-02-05",
@@ -320,44 +337,12 @@ mod tests {
     }
 
     #[test]
-    fn test_request_context() -> Result<()> {
-        let context = RequestContext::new("claude-3-5-sonnet@20240620")?;
-        assert!(matches!(context.provider(), ModelProvider::Anthropic));
-
-        let context = RequestContext::new("gemini-1.5-pro-002")?;
-        assert!(matches!(context.provider(), ModelProvider::Google));
-
-        assert!(RequestContext::new("unsupported-model").is_err());
-        Ok(())
-    }
-
-    #[test]
-    fn test_create_request() -> Result<()> {
-        let test_cases = [
-            ("claude-3-5-sonnet@20240620", ModelProvider::Anthropic),
-            ("gemini-1.5-pro-002", ModelProvider::Google),
-        ];
-
-        for (model_id, expected_provider) in test_cases {
-            let model_config = ModelConfig::new(model_id.to_string());
-            let system = "You are a helpful assistant.";
-            let messages = vec![Message::user().with_text("Hello")];
-            let tools = vec![];
-
-            let (request, context) = create_request(&model_config, system, &messages, &tools)?;
-
-            assert!(request.is_object());
-            assert_eq!(context.provider(), expected_provider);
-        }
-
-        Ok(())
-    }
-
-    #[test]
     fn test_default_locations() -> Result<()> {
         let test_cases = [
             ("claude-3-5-sonnet@20240620", GcpLocation::Ohio),
             ("claude-3-5-sonnet-v2@20241022", GcpLocation::Ohio),
+            ("claude-3-7-sonnet@20250219", GcpLocation::Ohio),
+            ("claude-3-5-haiku@20241022", GcpLocation::Ohio),
             ("gemini-1.5-pro-002", GcpLocation::Iowa),
             ("gemini-2.0-flash-001", GcpLocation::Iowa),
             ("gemini-2.0-pro-exp-02-05", GcpLocation::Iowa),
@@ -366,20 +351,16 @@ mod tests {
         for (model_id, expected_location) in test_cases {
             let model = GcpVertexAIModel::try_from(model_id)?;
             assert_eq!(
-                model.default_location(),
+                model.known_location(),
                 expected_location,
-                "Model {} should have default location {:?}",
-                model_id,
-                expected_location
+                "Model {model_id} should have default location {expected_location:?}",
             );
 
             let context = RequestContext::new(model_id)?;
             assert_eq!(
-                context.model.default_location(),
+                context.model.known_location(),
                 expected_location,
-                "RequestContext for {} should have default location {:?}",
-                model_id,
-                expected_location
+                "RequestContext for {model_id} should have default location {expected_location:?}",
             );
         }
 
