@@ -16,15 +16,15 @@ use tokio::sync::RwLock;
 pub enum AuthError {
     /// Error when loading credentials from the filesystem or environment
     #[error("Failed to load credentials: {0}")]
-    CredentialsError(String),
+    Credentials(String),
 
     /// Error during JWT token creation
     #[error("Token creation failed: {0}")]
-    TokenCreationError(String),
+    TokenCreation(String),
 
     /// Error during OAuth token exchange
     #[error("Token exchange failed: {0}")]
-    TokenExchangeError(String),
+    TokenExchange(String),
 }
 
 /// Represents an authentication token with its type and value.
@@ -113,7 +113,7 @@ pub trait FilesystemOps {
     async fn read_to_string(&self, path: String) -> Result<String, io::Error>;
 }
 
-//// A trait that defines operations for accessing environment variables.
+/// A trait that defines operations for accessing environment variables.
 ///
 /// This trait provides an abstraction over environment variable access,
 /// enabling testing through mock implementations.
@@ -194,25 +194,25 @@ impl AdcCredentials {
             return Ok(creds);
         }
 
-        Err(AuthError::CredentialsError(
+        Err(AuthError::Credentials(
             "No valid credentials found in any location".to_string(),
         ))
     }
 
     async fn load_from_file(fs_ops: &impl FilesystemOps, path: &str) -> Result<Self, AuthError> {
         let content = fs_ops.read_to_string(path.to_string()).await.map_err(|e| {
-            AuthError::CredentialsError(format!("Failed to read credentials from {}: {}", path, e))
+            AuthError::Credentials(format!("Failed to read credentials from {}: {}", path, e))
         })?;
 
         serde_json::from_str(&content)
-            .map_err(|e| AuthError::CredentialsError(format!("Invalid credentials format: {}", e)))
+            .map_err(|e| AuthError::Credentials(format!("Invalid credentials format: {}", e)))
     }
 
     fn get_env_credentials_path(env_ops: &impl EnvOps) -> Result<String, AuthError> {
         env_ops
             .get_var("GOOGLE_APPLICATION_CREDENTIALS")
             .map_err(|_| {
-                AuthError::CredentialsError("GOOGLE_APPLICATION_CREDENTIALS not set".to_string())
+                AuthError::Credentials("GOOGLE_APPLICATION_CREDENTIALS not set".to_string())
             })
     }
 
@@ -235,7 +235,7 @@ impl AdcCredentials {
                     .into_owned()
             })
             .map_err(|_| {
-                AuthError::CredentialsError("Could not determine user home directory".to_string())
+                AuthError::Credentials("Could not determine user home directory".to_string())
             })
     }
 
@@ -249,19 +249,20 @@ impl AdcCredentials {
             .send()
             .await
             .map_err(|e| {
-                AuthError::CredentialsError(format!("Metadata server request failed: {}", e))
+                AuthError::Credentials(format!("Metadata server request failed: {}", e))
             })?;
 
         if !response.status().is_success() {
-            return Err(AuthError::CredentialsError(
+            return Err(AuthError::Credentials(
                 "Not running on GCP or metadata server unavailable".to_string(),
             ));
         }
 
         // Get the identity token and credentials from metadata server
-        let token_response = response.json::<TokenResponse>().await.map_err(|e| {
-            AuthError::CredentialsError(format!("Invalid metadata response: {}", e))
-        })?;
+        let token_response = response
+            .json::<TokenResponse>()
+            .await
+            .map_err(|e| AuthError::Credentials(format!("Invalid metadata response: {}", e)))?;
 
         // Note: When using metadata server, we have access to the OAuth2 access token
         // that can be used to authenticate applications.
@@ -430,7 +431,7 @@ impl GcpAuth {
     fn create_jwt_token(&self, creds: &ServiceAccountCredentials) -> Result<String, AuthError> {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .map_err(|e| AuthError::TokenCreationError(e.to_string()))?
+            .map_err(|e| AuthError::TokenCreation(e.to_string()))?
             .as_secs();
 
         let claims = JwtClaims {
@@ -443,14 +444,14 @@ impl GcpAuth {
         };
 
         let encoding_key = EncodingKey::from_rsa_pem(creds.private_key.as_bytes())
-            .map_err(|e| AuthError::TokenCreationError(format!("Invalid private key: {}", e)))?;
+            .map_err(|e| AuthError::TokenCreation(format!("Invalid private key: {}", e)))?;
 
         encode(
             &Header::new(jsonwebtoken::Algorithm::RS256),
             &claims,
             &encoding_key,
         )
-        .map_err(|e| AuthError::TokenCreationError(format!("Failed to create JWT: {}", e)))
+        .map_err(|e| AuthError::TokenCreation(format!("Failed to create JWT: {}", e)))
     }
 
     /// Exchanges a token or assertion for an access token.
@@ -472,7 +473,7 @@ impl GcpAuth {
             .form(params)
             .send()
             .await
-            .map_err(|e| AuthError::TokenExchangeError(e.to_string()))?;
+            .map_err(|e| AuthError::TokenExchange(e.to_string()))?;
 
         let status = response.status();
         if !status.is_success() {
@@ -480,7 +481,7 @@ impl GcpAuth {
                 .text()
                 .await
                 .unwrap_or_else(|_| "Unknown error".to_string());
-            return Err(AuthError::TokenExchangeError(format!(
+            return Err(AuthError::TokenExchange(format!(
                 "Status {}: {}",
                 status, error_text
             )));
@@ -489,7 +490,7 @@ impl GcpAuth {
         response
             .json::<TokenResponse>()
             .await
-            .map_err(|e| AuthError::TokenExchangeError(format!("Invalid response: {}", e)))
+            .map_err(|e| AuthError::TokenExchange(format!("Invalid response: {}", e)))
     }
 
     /// Gets a token using service account credentials.
@@ -734,7 +735,7 @@ iXVBc2YmAuU8hiOFUPxtyQfNzG5fQ0rhJSewdtyWxIadJSLj6fsK+AEsNQ==
         let result = auth.get_token().await;
         assert!(result.is_err());
         match result {
-            Err(AuthError::TokenCreationError(_)) => (),
+            Err(AuthError::TokenCreation(_)) => (),
             _ => panic!("Expected TokenCreationError"),
         }
     }
@@ -802,7 +803,7 @@ iXVBc2YmAuU8hiOFUPxtyQfNzG5fQ0rhJSewdtyWxIadJSLj6fsK+AEsNQ==
                     }
                     Err(e) => {
                         match e {
-                            AuthError::TokenExchangeError(err) => {
+                            AuthError::TokenExchange(err) => {
                                 // This is expected - we can't actually exchange tokens in tests
                                 assert!(
                                     err.contains("invalid_scope") || err.contains("400"),
@@ -835,7 +836,7 @@ iXVBc2YmAuU8hiOFUPxtyQfNzG5fQ0rhJSewdtyWxIadJSLj6fsK+AEsNQ==
         let result = auth.get_token().await;
         assert!(result.is_err());
         match result {
-            Err(AuthError::TokenExchangeError(_)) => (),
+            Err(AuthError::TokenExchange(_)) => (),
             _ => panic!("Expected TokenExchangeError"),
         }
     }
@@ -1081,7 +1082,7 @@ iXVBc2YmAuU8hiOFUPxtyQfNzG5fQ0rhJSewdtyWxIadJSLj6fsK+AEsNQ==
         )
         .await;
 
-        assert!(matches!(result, Err(AuthError::CredentialsError(_))));
+        assert!(matches!(result, Err(AuthError::Credentials(_))));
     }
 
     #[tokio::test]
@@ -1109,6 +1110,6 @@ iXVBc2YmAuU8hiOFUPxtyQfNzG5fQ0rhJSewdtyWxIadJSLj6fsK+AEsNQ==
             "http://metadata.example.com",
         )
         .await;
-        assert!(matches!(result, Err(AuthError::CredentialsError(_))));
+        assert!(matches!(result, Err(AuthError::Credentials(_))));
     }
 }

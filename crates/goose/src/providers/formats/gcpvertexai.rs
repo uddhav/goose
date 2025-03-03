@@ -35,7 +35,7 @@ impl TryFrom<&str> for GcpLocation {
         match s {
             "us-central1" => Ok(Self::Iowa),
             "us-east5" => Ok(Self::Ohio),
-            _ => Err(ModelError::UnsupportedLocation(s.to_string().into())),
+            _ => Err(ModelError::UnsupportedLocation(s.to_string())),
         }
     }
 }
@@ -139,7 +139,7 @@ impl TryFrom<&str> for GcpVertexAIModel {
             "gemini-1.5-pro-002" => Ok(Self::Gemini(GeminiVersion::Pro15)),
             "gemini-2.0-flash-001" => Ok(Self::Gemini(GeminiVersion::Flash20)),
             "gemini-2.0-pro-exp-02-05" => Ok(Self::Gemini(GeminiVersion::Pro20Exp)),
-            _ => Err(ModelError::UnsupportedModel(s.to_string().into())),
+            _ => Err(ModelError::UnsupportedModel(s.to_string())),
         }
     }
 }

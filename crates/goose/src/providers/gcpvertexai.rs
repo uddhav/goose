@@ -147,7 +147,7 @@ impl GcpVertexAIProvider {
     async fn new_async(model: ModelConfig) -> Result<Self> {
         let config = crate::config::Config::global();
         let project_id = config.get("GCP_PROJECT_ID")?;
-        let location = Self::determine_location(&config)?;
+        let location = Self::determine_location(config)?;
         let host = format!("https://{}-aiplatform.googleapis.com", location);
 
         let client = Client::builder()
@@ -157,7 +157,7 @@ impl GcpVertexAIProvider {
         let auth = GcpAuth::new().await?;
 
         // Load optional retry configuration from environment
-        let retry_config = Self::load_retry_config(&config);
+        let retry_config = Self::load_retry_config(config);
 
         Ok(Self {
             client,
@@ -297,9 +297,7 @@ impl GcpVertexAIProvider {
                     self.retry_config.max_retries
                 );
                 tracing::error!("{}", error_msg);
-                return Err(
-                    last_error.unwrap_or_else(|| ProviderError::RateLimitExceeded(error_msg))
-                );
+                return Err(last_error.unwrap_or(ProviderError::RateLimitExceeded(error_msg)));
             }
 
             // Get a fresh auth token for each attempt
