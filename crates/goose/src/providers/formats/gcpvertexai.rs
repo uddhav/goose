@@ -92,6 +92,18 @@ pub enum ClaudeVersion {
 /// Represents available versions of the Gemini model for Goose.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GeminiVersion {
+    /// Gemini 1.5 Pro version
+    Pro15,
+    /// Gemini 2.0 Flash version
+    Flash20,
+    /// Gemini 2.0 Pro Experimental version
+    Pro20Exp,
+    /// Gemini 2.5 Pro Experimental version
+    Pro25Exp,
+    /// Gemini 2.5 Flash Preview version
+    Flash25Preview,
+    /// Gemini 2.5 Pro Preview version
+    Pro25Preview,
     /// Gemini 2.5 Flash version
     Flash25,
     /// Gemini 2.5 Pro version
@@ -113,6 +125,12 @@ impl fmt::Display for GcpVertexAIModel {
                 ClaudeVersion::Generic(name) => name,
             },
             Self::Gemini(version) => match version {
+                GeminiVersion::Pro15 => "gemini-1.5-pro-002",
+                GeminiVersion::Flash20 => "gemini-2.0-flash-001",
+                GeminiVersion::Pro20Exp => "gemini-2.0-pro-exp-02-05",
+                GeminiVersion::Pro25Exp => "gemini-2.5-pro-exp-03-25",
+                GeminiVersion::Flash25Preview => "gemini-2.5-flash-preview-05-20",
+                GeminiVersion::Pro25Preview => "gemini-2.5-pro-preview-05-06",
                 GeminiVersion::Flash25 => "gemini-2.5-flash",
                 GeminiVersion::Pro25 => "gemini-2.5-pro",
                 GeminiVersion::Generic(name) => name,
@@ -147,6 +165,13 @@ impl TryFrom<&str> for GcpVertexAIModel {
             "claude-3-7-sonnet@20250219" => Ok(Self::Claude(ClaudeVersion::Sonnet37)),
             "claude-3-5-haiku@20241022" => Ok(Self::Claude(ClaudeVersion::Haiku35)),
             "claude-sonnet-4@20250514" => Ok(Self::Claude(ClaudeVersion::Sonnet4)),
+            "claude-opus-4@20250514" => Ok(Self::Claude(ClaudeVersion::Opus4)),
+            "gemini-1.5-pro-002" => Ok(Self::Gemini(GeminiVersion::Pro15)),
+            "gemini-2.0-flash-001" => Ok(Self::Gemini(GeminiVersion::Flash20)),
+            "gemini-2.0-pro-exp-02-05" => Ok(Self::Gemini(GeminiVersion::Pro20Exp)),
+            "gemini-2.5-pro-exp-03-25" => Ok(Self::Gemini(GeminiVersion::Pro25Exp)),
+            "gemini-2.5-flash-preview-05-20" => Ok(Self::Gemini(GeminiVersion::Flash25Preview)),
+            "gemini-2.5-pro-preview-05-06" => Ok(Self::Gemini(GeminiVersion::Pro25Preview)),
             "gemini-2.5-flash" => Ok(Self::Gemini(GeminiVersion::Flash25)),
             "gemini-2.5-pro" => Ok(Self::Gemini(GeminiVersion::Pro25)),
             // Generic models based on prefix matching
@@ -342,6 +367,7 @@ mod tests {
             "claude-sonnet-4@20250514",
             "gemini-1.5-pro-002",
             "gemini-2.0-flash-001",
+            "gemini-2.0-pro-exp-02-05",
             "gemini-2.5-pro-exp-03-25",
             "gemini-2.5-flash-preview-05-20",
             "gemini-2.5-pro-preview-05-06",
@@ -366,6 +392,7 @@ mod tests {
             ("claude-sonnet-4@20250514", GcpLocation::Ohio),
             ("gemini-1.5-pro-002", GcpLocation::Iowa),
             ("gemini-2.0-flash-001", GcpLocation::Iowa),
+            ("gemini-2.0-pro-exp-02-05", GcpLocation::Iowa),
             ("gemini-2.5-pro-exp-03-25", GcpLocation::Iowa),
             ("gemini-2.5-flash-preview-05-20", GcpLocation::Iowa),
             ("gemini-2.5-pro-preview-05-06", GcpLocation::Iowa),

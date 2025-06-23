@@ -522,6 +522,12 @@ impl Provider for GcpVertexAIProvider {
             GcpVertexAIModel::Claude(ClaudeVersion::Haiku35),
             GcpVertexAIModel::Claude(ClaudeVersion::Sonnet4),
             GcpVertexAIModel::Claude(ClaudeVersion::Opus4),
+            GcpVertexAIModel::Gemini(GeminiVersion::Pro15),
+            GcpVertexAIModel::Gemini(GeminiVersion::Flash20),
+            GcpVertexAIModel::Gemini(GeminiVersion::Pro20Exp),
+            GcpVertexAIModel::Gemini(GeminiVersion::Pro25Exp),
+            GcpVertexAIModel::Gemini(GeminiVersion::Flash25Preview),
+            GcpVertexAIModel::Gemini(GeminiVersion::Pro25Preview),
             GcpVertexAIModel::Gemini(GeminiVersion::Flash25),
             GcpVertexAIModel::Gemini(GeminiVersion::Pro25),
         ]
@@ -734,6 +740,7 @@ mod tests {
             .map(|m| m.name.clone())
             .collect();
         assert!(model_names.contains(&"claude-3-5-sonnet-v2@20241022".to_string()));
+        assert!(model_names.contains(&"gemini-1.5-pro-002".to_string()));
         assert!(model_names.contains(&"gemini-2.5-pro".to_string()));
         // Should contain the original 2 config keys plus 6 new retry-related ones
         assert_eq!(metadata.config_keys.len(), 8);
