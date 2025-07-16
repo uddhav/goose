@@ -12,19 +12,17 @@ import styles from '@site/src/components/Card/styles.module.css';
   Recipes are reusable workflows that package extensions, prompts, and settings together. Share proven workflows with your team and reproduce successful results consistently.
 </p>
 
-
-<!-- will replace with Recipe video once live -->
-<!-- <div className="video-container margin-bottom--lg">
+ <div className="video-container margin-bottom--lg">
   <iframe 
     width="100%"
     height="400"
-    src="https://www.youtube.com/embed/D-DpDunrbpo"
-    title="Vibe coding with Goose"
+    src="https://www.youtube.com/embed/8rTliYrQ6Iw"
+    title="Create Reusable AI Agents with Recipes"
     frameBorder="0"
     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
     allowFullScreen
   ></iframe>
-</div> -->
+</div> 
 
 <div className={styles.categorySection}>
   <h2 className={styles.categoryTitle}>📚 Documentation & Guides</h2>
@@ -43,6 +41,16 @@ import styles from '@site/src/components/Card/styles.module.css';
       title="Goose Recipes Tutorial"
       description="Learn how to create and use Goose recipes with prompts, parameters, MCP servers, and more."
       link="/docs/tutorials/recipes-tutorial"
+    />
+    <Card 
+      title="Sub-Recipes"
+      description="Learn how a recipe can use sub-recipes to do specific tasks."
+      link="/docs/guides/recipes/sub-recipes"
+    />
+    <Card 
+      title="Saving Recipes"
+      description="Learn how to save, organize, and find your Goose recipes for easy access and reuse."
+      link="/docs/guides/recipes/storing-recipes"
     />
   </div>
 </div>

@@ -10,7 +10,7 @@
     "license": {
       "name": "Apache-2.0"
     },
-    "version": "1.0.30"
+    "version": "1.0.36"
   },
   "paths": {
     "/agent/tools": {
@@ -1317,6 +1317,60 @@
           },
           {
             "type": "object",
+            "description": "Streamable HTTP client with a URI endpoint using MCP Streamable HTTP specification",
+            "required": [
+              "name",
+              "uri",
+              "type"
+            ],
+            "properties": {
+              "bundled": {
+                "type": "boolean",
+                "description": "Whether this extension is bundled with Goose",
+                "nullable": true
+              },
+              "description": {
+                "type": "string",
+                "nullable": true
+              },
+              "env_keys": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "envs": {
+                "$ref": "#/components/schemas/Envs"
+              },
+              "headers": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "name": {
+                "type": "string",
+                "description": "The name used to identify this extension"
+              },
+              "timeout": {
+                "type": "integer",
+                "format": "int64",
+                "nullable": true,
+                "minimum": 0
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "streamable_http"
+                ]
+              },
+              "uri": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
             "description": "Frontend-provided tools that will be called through the frontend",
             "required": [
               "name",
@@ -1509,6 +1563,10 @@
           "created": {
             "type": "integer",
             "format": "int64"
+          },
+          "id": {
+            "type": "string",
+            "nullable": true
           },
           "role": {
             "$ref": "#/components/schemas/Role"
@@ -2169,6 +2227,11 @@
             "type": "integer",
             "format": "int32",
             "description": "The number of output tokens used in the session. Retrieved from the provider's last usage.",
+            "nullable": true
+          },
+          "project_id": {
+            "type": "string",
+            "description": "ID of the project this session belongs to, if any",
             "nullable": true
           },
           "schedule_id": {

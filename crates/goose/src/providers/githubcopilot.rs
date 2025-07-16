@@ -139,7 +139,7 @@ impl GithubCopilotProvider {
 
     async fn post(&self, mut payload: Value) -> Result<Value, ProviderError> {
         use crate::providers::utils_universal_openai_stream::{OAIStreamChunk, OAIStreamCollector};
-        use futures_util::StreamExt;
+        use futures::StreamExt;
         // Detect gpt-4.1 and stream
         let model_name = payload.get("model").and_then(|v| v.as_str()).unwrap_or("");
         let stream_only_model = GITHUB_COPILOT_STREAM_MODELS
@@ -415,14 +415,10 @@ impl Provider for GithubCopilotProvider {
 
         // Parse response
         let message = response_to_message(response.clone())?;
-        let usage = match get_usage(&response) {
-            Ok(usage) => usage,
-            Err(ProviderError::UsageError(e)) => {
-                tracing::debug!("Failed to get usage data: {}", e);
-                Usage::default()
-            }
-            Err(e) => return Err(e),
-        };
+        let usage = response.get("usage").map(get_usage).unwrap_or_else(|| {
+            tracing::debug!("Failed to get usage data");
+            Usage::default()
+        });
         let model = get_model(&response);
         emit_debug_trace(&self.model, &payload, &response, &usage);
         Ok((message, ProviderUsage::new(model, usage)))

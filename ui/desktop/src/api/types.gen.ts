@@ -129,6 +129,24 @@ export type ExtensionConfig = {
      * Whether this extension is bundled with Goose
      */
     bundled?: boolean | null;
+    description?: string | null;
+    env_keys?: Array<string>;
+    envs?: Envs;
+    headers?: {
+        [key: string]: string;
+    };
+    /**
+     * The name used to identify this extension
+     */
+    name: string;
+    timeout?: number | null;
+    type: 'streamable_http';
+    uri: string;
+} | {
+    /**
+     * Whether this extension is bundled with Goose
+     */
+    bundled?: boolean | null;
     /**
      * Instructions for how to use these tools
      */
@@ -193,6 +211,7 @@ export type ListSchedulesResponse = {
 export type Message = {
     content: Array<MessageContent>;
     created: number;
+    id?: string | null;
     role: Role;
 };
 
@@ -410,6 +429,10 @@ export type SessionMetadata = {
      * The number of output tokens used in the session. Retrieved from the provider's last usage.
      */
     output_tokens?: number | null;
+    /**
+     * ID of the project this session belongs to, if any
+     */
+    project_id?: string | null;
     /**
      * ID of the schedule that triggered this session, if any
      */

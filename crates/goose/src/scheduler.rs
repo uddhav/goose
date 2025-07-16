@@ -270,14 +270,23 @@ impl Scheduler {
 
         tracing::info!("Attempting to parse cron expression: '{}'", stored_job.cron);
         let normalized_cron = normalize_cron_expression(&stored_job.cron);
-        if normalized_cron != stored_job.cron {
+        // Convert from 7-field (Temporal format) to 6-field (tokio-cron-scheduler format)
+        let tokio_cron = {
+            let parts: Vec<&str> = normalized_cron.split_whitespace().collect();
+            if parts.len() == 7 {
+                parts[..6].join(" ")
+            } else {
+                normalized_cron.clone()
+            }
+        };
+        if tokio_cron != stored_job.cron {
             tracing::info!(
-                "Normalized cron expression from '{}' to '{}'",
+                "Converted cron expression from '{}' to '{}' for tokio-cron-scheduler",
                 stored_job.cron,
-                normalized_cron
+                tokio_cron
             );
         }
-        let cron_task = Job::new_async(&normalized_cron, move |_uuid, _l| {
+        let cron_task = Job::new_async(&tokio_cron, move |_uuid, _l| {
             let task_job_id = job_for_task.id.clone();
             let current_jobs_arc = jobs_arc_for_task.clone();
             let local_storage_path = storage_path_for_task.clone();
@@ -439,14 +448,23 @@ impl Scheduler {
                 job_to_load.cron
             );
             let normalized_cron = normalize_cron_expression(&job_to_load.cron);
-            if normalized_cron != job_to_load.cron {
+            // Convert from 7-field (Temporal format) to 6-field (tokio-cron-scheduler format)
+            let tokio_cron = {
+                let parts: Vec<&str> = normalized_cron.split_whitespace().collect();
+                if parts.len() == 7 {
+                    parts[..6].join(" ")
+                } else {
+                    normalized_cron.clone()
+                }
+            };
+            if tokio_cron != job_to_load.cron {
                 tracing::info!(
-                    "Normalized cron expression from '{}' to '{}'",
+                    "Converted cron expression from '{}' to '{}' for tokio-cron-scheduler",
                     job_to_load.cron,
-                    normalized_cron
+                    tokio_cron
                 );
             }
-            let cron_task = Job::new_async(&normalized_cron, move |_uuid, _l| {
+            let cron_task = Job::new_async(&tokio_cron, move |_uuid, _l| {
                 let task_job_id = job_for_task.id.clone();
                 let current_jobs_arc = jobs_arc_for_task.clone();
                 let local_storage_path = storage_path_for_task.clone();
@@ -810,14 +828,23 @@ impl Scheduler {
                     new_cron
                 );
                 let normalized_cron = normalize_cron_expression(&new_cron);
-                if normalized_cron != new_cron {
+                // Convert from 7-field (Temporal format) to 6-field (tokio-cron-scheduler format)
+                let tokio_cron = {
+                    let parts: Vec<&str> = normalized_cron.split_whitespace().collect();
+                    if parts.len() == 7 {
+                        parts[..6].join(" ")
+                    } else {
+                        normalized_cron.clone()
+                    }
+                };
+                if tokio_cron != new_cron {
                     tracing::info!(
-                        "Normalized cron expression from '{}' to '{}'",
+                        "Converted cron expression from '{}' to '{}' for tokio-cron-scheduler",
                         new_cron,
-                        normalized_cron
+                        tokio_cron
                     );
                 }
-                let cron_task = Job::new_async(&normalized_cron, move |_uuid, _l| {
+                let cron_task = Job::new_async(&tokio_cron, move |_uuid, _l| {
                     let task_job_id = job_for_task.id.clone();
                     let current_jobs_arc = jobs_arc_for_task.clone();
                     let local_storage_path = storage_path_for_task.clone();
@@ -1176,6 +1203,7 @@ async fn run_scheduled_job_internal(
             working_dir: current_dir.clone(),
             schedule_id: Some(job.id.clone()),
             execution_mode: job.execution_mode.clone(),
+            max_turns: None,
         };
 
         match agent
@@ -1239,6 +1267,7 @@ async fn run_scheduled_job_internal(
                             working_dir: current_dir.clone(),
                             description: String::new(),
                             schedule_id: Some(job.id.clone()),
+                            project_id: None,
                             message_count: all_session_messages.len(),
                             total_tokens: None,
                             input_tokens: None,
@@ -1342,14 +1371,14 @@ mod tests {
             _tools: &[Tool],
         ) -> Result<(Message, ProviderUsage), ProviderError> {
             Ok((
-                Message {
-                    role: Role::Assistant,
-                    created: Utc::now().timestamp(),
-                    content: vec![MessageContent::Text(TextContent {
+                Message::new(
+                    Role::Assistant,
+                    Utc::now().timestamp(),
+                    vec![MessageContent::Text(TextContent {
                         text: "Mocked scheduled response".to_string(),
                         annotations: None,
                     })],
-                },
+                ),
                 ProviderUsage::new("mock-scheduler-test".to_string(), Usage::default()),
             ))
         }
@@ -1390,6 +1419,7 @@ mod tests {
             author: None,
             parameters: None,
             settings: None,
+            response: None,
             sub_recipes: None,
         };
         let mut recipe_file = File::create(&recipe_filename)?;

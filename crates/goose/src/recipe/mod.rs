@@ -29,6 +29,7 @@ fn default_version() -> String {
 /// * `activities` - Activity labels that appear when loading the Recipe
 /// * `author` - Information about the Recipe's creator and metadata
 /// * `parameters` - Additional parameters for the Recipe
+/// * `response` - Response configuration including JSON schema validation
 ///
 /// # Example
 ///
@@ -56,6 +57,8 @@ fn default_version() -> String {
 ///     author: None,
 ///     settings: None,
 ///     parameters: None,
+///     response: None,
+///     sub_recipes: None,
 /// };
 ///
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -95,6 +98,9 @@ pub struct Recipe {
     pub parameters: Option<Vec<RecipeParameter>>, // any additional parameters for the recipe
 
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub response: Option<Response>, // response configuration including JSON schema
+
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub sub_recipes: Option<Vec<SubRecipe>>, // sub-recipes for the recipe
 }
 
@@ -117,6 +123,12 @@ pub struct Settings {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub temperature: Option<f32>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Response {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub json_schema: Option<serde_json::Value>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -216,6 +228,7 @@ pub struct RecipeBuilder {
     activities: Option<Vec<String>>,
     author: Option<Author>,
     parameters: Option<Vec<RecipeParameter>>,
+    response: Option<Response>,
     sub_recipes: Option<Vec<SubRecipe>>,
 }
 
@@ -247,14 +260,23 @@ impl Recipe {
             activities: None,
             author: None,
             parameters: None,
+            response: None,
             sub_recipes: None,
         }
     }
     pub fn from_content(content: &str) -> Result<Self> {
-        if serde_json::from_str::<serde_json::Value>(content).is_ok() {
-            Ok(serde_json::from_str(content)?)
-        } else if serde_yaml::from_str::<serde_yaml::Value>(content).is_ok() {
-            Ok(serde_yaml::from_str(content)?)
+        if let Ok(json_value) = serde_json::from_str::<serde_json::Value>(content) {
+            if let Some(nested_recipe) = json_value.get("recipe") {
+                Ok(serde_json::from_value(nested_recipe.clone())?)
+            } else {
+                Ok(serde_json::from_str(content)?)
+            }
+        } else if let Ok(yaml_value) = serde_yaml::from_str::<serde_yaml::Value>(content) {
+            if let Some(nested_recipe) = yaml_value.get("recipe") {
+                Ok(serde_yaml::from_value(nested_recipe.clone())?)
+            } else {
+                Ok(serde_yaml::from_str(content)?)
+            }
         } else {
             Err(anyhow::anyhow!(
                 "Unsupported format. Expected JSON or YAML."
@@ -327,6 +349,12 @@ impl RecipeBuilder {
         self.parameters = Some(parameters);
         self
     }
+
+    pub fn response(mut self, response: Response) -> Self {
+        self.response = Some(response);
+        self
+    }
+
     pub fn sub_recipes(mut self, sub_recipes: Vec<SubRecipe>) -> Self {
         self.sub_recipes = Some(sub_recipes);
         self
@@ -355,6 +383,7 @@ impl RecipeBuilder {
             activities: self.activities,
             author: self.author,
             parameters: self.parameters,
+            response: self.response,
             sub_recipes: self.sub_recipes,
         })
     }
@@ -390,6 +419,20 @@ mod tests {
                     "description": "A test parameter"
                 }
             ],
+            "response": {
+                "json_schema": {
+                    "type": "object",
+                    "properties": {
+                        "name": {
+                            "type": "string"
+                        },
+                        "age": {
+                            "type": "number"
+                        }
+                    },
+                    "required": ["name"]
+                }
+            },
             "sub_recipes": [
                 {
                     "name": "test_sub_recipe",
@@ -425,6 +468,16 @@ mod tests {
             RecipeParameterRequirement::Required
         ));
 
+        assert!(recipe.response.is_some());
+        let response = recipe.response.unwrap();
+        assert!(response.json_schema.is_some());
+        let json_schema = response.json_schema.unwrap();
+        assert_eq!(json_schema["type"], "object");
+        assert!(json_schema["properties"].is_object());
+        assert_eq!(json_schema["properties"]["name"]["type"], "string");
+        assert_eq!(json_schema["properties"]["age"]["type"], "number");
+        assert_eq!(json_schema["required"], serde_json::json!(["name"]));
+
         assert!(recipe.sub_recipes.is_some());
         let sub_recipes = recipe.sub_recipes.unwrap();
         assert_eq!(sub_recipes.len(), 1);
@@ -458,6 +511,16 @@ parameters:
     input_type: string
     requirement: required
     description: A test parameter
+response:
+  json_schema:
+    type: object
+    properties:
+      name:
+        type: string
+      age:
+        type: number
+    required:
+      - name
 sub_recipes:
   - name: test_sub_recipe
     path: test_sub_recipe.yaml
@@ -487,6 +550,16 @@ sub_recipes:
             parameters[0].requirement,
             RecipeParameterRequirement::Required
         ));
+
+        assert!(recipe.response.is_some());
+        let response = recipe.response.unwrap();
+        assert!(response.json_schema.is_some());
+        let json_schema = response.json_schema.unwrap();
+        assert_eq!(json_schema["type"], "object");
+        assert!(json_schema["properties"].is_object());
+        assert_eq!(json_schema["properties"]["name"]["type"], "string");
+        assert_eq!(json_schema["properties"]["age"]["type"], "number");
+        assert_eq!(json_schema["required"], serde_json::json!(["name"]));
 
         assert!(recipe.sub_recipes.is_some());
         let sub_recipes = recipe.sub_recipes.unwrap();
@@ -555,5 +628,35 @@ sub_recipes:
         assert!(recipe.activities.is_some());
         let activities = recipe.activities.unwrap();
         assert_eq!(activities, vec!["activity1", "activity2"]);
+    }
+
+    #[test]
+    fn test_from_content_with_nested_recipe_yaml() {
+        let content = r#"name: test_recipe
+recipe:
+  title: Nested Recipe Test
+  description: A test recipe with nested structure
+  instructions: Test instructions for nested recipe
+  activities:
+    - Test activity 1
+    - Test activity 2
+  prompt: Test prompt
+  extensions: []
+isGlobal: true"#;
+
+        let recipe = Recipe::from_content(content).unwrap();
+        assert_eq!(recipe.title, "Nested Recipe Test");
+        assert_eq!(recipe.description, "A test recipe with nested structure");
+        assert_eq!(
+            recipe.instructions,
+            Some("Test instructions for nested recipe".to_string())
+        );
+        assert_eq!(recipe.prompt, Some("Test prompt".to_string()));
+        assert!(recipe.activities.is_some());
+        let activities = recipe.activities.unwrap();
+        assert_eq!(activities, vec!["Test activity 1", "Test activity 2"]);
+        assert!(recipe.extensions.is_some());
+        let extensions = recipe.extensions.unwrap();
+        assert_eq!(extensions.len(), 0);
     }
 }
