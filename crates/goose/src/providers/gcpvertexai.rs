@@ -15,7 +15,7 @@ use crate::providers::base::{ConfigKey, Provider, ProviderMetadata, ProviderUsag
 use crate::providers::errors::ProviderError;
 use crate::providers::formats::gcpvertexai::{
     create_request, get_usage, response_to_message, ClaudeVersion, GcpVertexAIModel, GeminiVersion,
-    ModelProvider, RequestContext,
+    ModelProvider, QwenVersion, RequestContext,
 };
 
 use crate::impl_provider_default;
@@ -211,6 +211,7 @@ impl GcpVertexAIProvider {
         let endpoint = match provider {
             ModelProvider::Anthropic => "streamRawPredict",
             ModelProvider::Google => "generateContent",
+            ModelProvider::Qwen => "generateContent",
         };
 
         // Construct path for URL
@@ -458,6 +459,7 @@ impl Provider for GcpVertexAIProvider {
             GcpVertexAIModel::Gemini(GeminiVersion::Pro25Preview),
             GcpVertexAIModel::Gemini(GeminiVersion::Flash25),
             GcpVertexAIModel::Gemini(GeminiVersion::Pro25),
+            GcpVertexAIModel::Qwen(QwenVersion::Coder480BInstructMaas),
         ]
         .iter()
         .map(|model| model.to_string())
@@ -632,6 +634,7 @@ mod tests {
         assert!(model_names.contains(&"claude-3-5-sonnet-v2@20241022".to_string()));
         assert!(model_names.contains(&"gemini-1.5-pro-002".to_string()));
         assert!(model_names.contains(&"gemini-2.5-pro".to_string()));
+        assert!(model_names.contains(&"qwen3-coder-480b-a35b-instruct-maas".to_string()));
         // Should contain the original 2 config keys plus 4 new retry-related ones
         assert_eq!(metadata.config_keys.len(), 6);
     }

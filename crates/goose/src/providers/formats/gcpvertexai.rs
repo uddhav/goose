@@ -68,6 +68,8 @@ pub enum GcpVertexAIModel {
     Claude(ClaudeVersion),
     /// Gemini model family with specific versions
     Gemini(GeminiVersion),
+    /// Qwen model family with specific versions
+    Qwen(QwenVersion),
 }
 
 /// Represents available versions of the Claude model for Goose.
@@ -112,6 +114,15 @@ pub enum GeminiVersion {
     Generic(String),
 }
 
+/// Represents available versions of the Qwen model for Goose.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum QwenVersion {
+    /// Qwen3 Coder 480B Instruct MAAS version
+    Coder480BInstructMaas,
+    /// Generic Qwen model for custom or new versions
+    Generic(String),
+}
+
 impl fmt::Display for GcpVertexAIModel {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let model_id = match self {
@@ -135,6 +146,10 @@ impl fmt::Display for GcpVertexAIModel {
                 GeminiVersion::Pro25 => "gemini-2.5-pro",
                 GeminiVersion::Generic(name) => name,
             },
+            Self::Qwen(version) => match version {
+                QwenVersion::Coder480BInstructMaas => "qwen3-coder-480b-a35b-instruct-maas",
+                QwenVersion::Generic(name) => name,
+            },
         };
         write!(f, "{model_id}")
     }
@@ -146,10 +161,12 @@ impl GcpVertexAIModel {
     /// Each model family has a well-known location based on availability:
     /// - Claude models default to Ohio (us-east5)
     /// - Gemini models default to Iowa (us-central1)
+    /// - Qwen models default to Iowa (us-central1)
     pub fn known_location(&self) -> GcpLocation {
         match self {
             Self::Claude(_) => GcpLocation::Ohio,
             Self::Gemini(_) => GcpLocation::Iowa,
+            Self::Qwen(_) => GcpLocation::Iowa,
         }
     }
 }
@@ -174,6 +191,13 @@ impl TryFrom<&str> for GcpVertexAIModel {
             "gemini-2.5-pro-preview-05-06" => Ok(Self::Gemini(GeminiVersion::Pro25Preview)),
             "gemini-2.5-flash" => Ok(Self::Gemini(GeminiVersion::Flash25)),
             "gemini-2.5-pro" => Ok(Self::Gemini(GeminiVersion::Pro25)),
+            "qwen3-coder-480b-a35b-instruct-maas" => {
+                Ok(Self::Qwen(QwenVersion::Coder480BInstructMaas))
+            }
+            // Handle the qwen/ prefix format as mentioned in the issue
+            "qwen/qwen3-coder-480b-a35b-instruct-maas" => {
+                Ok(Self::Qwen(QwenVersion::Coder480BInstructMaas))
+            }
             // Generic models based on prefix matching
             _ if s.starts_with("claude-") => {
                 Ok(Self::Claude(ClaudeVersion::Generic(s.to_string())))
@@ -181,6 +205,12 @@ impl TryFrom<&str> for GcpVertexAIModel {
             _ if s.starts_with("gemini-") => {
                 Ok(Self::Gemini(GeminiVersion::Generic(s.to_string())))
             }
+            _ if s.starts_with("qwen/") => {
+                // Remove the qwen/ prefix for generic parsing
+                let model_name = s.strip_prefix("qwen/").unwrap();
+                Ok(Self::Qwen(QwenVersion::Generic(model_name.to_string())))
+            }
+            _ if s.starts_with("qwen") => Ok(Self::Qwen(QwenVersion::Generic(s.to_string()))),
             _ => Err(ModelError::UnsupportedModel(s.to_string())),
         }
     }
@@ -217,6 +247,7 @@ impl RequestContext {
         match self.model {
             GcpVertexAIModel::Claude(_) => ModelProvider::Anthropic,
             GcpVertexAIModel::Gemini(_) => ModelProvider::Google,
+            GcpVertexAIModel::Qwen(_) => ModelProvider::Qwen,
         }
     }
 }
@@ -228,6 +259,8 @@ pub enum ModelProvider {
     Anthropic,
     /// Google provider (Gemini models)
     Google,
+    /// Qwen provider (Qwen models)
+    Qwen,
 }
 
 impl ModelProvider {
@@ -236,6 +269,7 @@ impl ModelProvider {
         match self {
             Self::Anthropic => "anthropic",
             Self::Google => "google",
+            Self::Qwen => "qwen",
         }
     }
 }
@@ -317,6 +351,7 @@ pub fn create_request(
         GcpVertexAIModel::Gemini(_) => {
             create_google_request(model_config, system, messages, tools)?
         }
+        GcpVertexAIModel::Qwen(_) => create_google_request(model_config, system, messages, tools)?,
     };
 
     Ok((request, context))
@@ -334,6 +369,7 @@ pub fn response_to_message(response: Value, request_context: RequestContext) -> 
     match request_context.provider() {
         ModelProvider::Anthropic => anthropic::response_to_message(&response),
         ModelProvider::Google => google::response_to_message(response),
+        ModelProvider::Qwen => google::response_to_message(response),
     }
 }
 
@@ -349,6 +385,7 @@ pub fn get_usage(data: &Value, request_context: &RequestContext) -> Result<Usage
     match request_context.provider() {
         ModelProvider::Anthropic => anthropic::get_usage(data),
         ModelProvider::Google => google::get_usage(data),
+        ModelProvider::Qwen => google::get_usage(data),
     }
 }
 
@@ -371,12 +408,21 @@ mod tests {
             "gemini-2.5-pro-exp-03-25",
             "gemini-2.5-flash-preview-05-20",
             "gemini-2.5-pro-preview-05-06",
+            "qwen3-coder-480b-a35b-instruct-maas",
         ];
 
         for model_id in valid_models {
             let model = GcpVertexAIModel::try_from(model_id)?;
             assert_eq!(model.to_string(), model_id);
         }
+
+        // Test the qwen/ prefix format
+        let model_with_prefix =
+            GcpVertexAIModel::try_from("qwen/qwen3-coder-480b-a35b-instruct-maas")?;
+        assert_eq!(
+            model_with_prefix.to_string(),
+            "qwen3-coder-480b-a35b-instruct-maas"
+        );
 
         assert!(GcpVertexAIModel::try_from("unsupported-model").is_err());
         Ok(())
@@ -396,6 +442,7 @@ mod tests {
             ("gemini-2.5-pro-exp-03-25", GcpLocation::Iowa),
             ("gemini-2.5-flash-preview-05-20", GcpLocation::Iowa),
             ("gemini-2.5-pro-preview-05-06", GcpLocation::Iowa),
+            ("qwen3-coder-480b-a35b-instruct-maas", GcpLocation::Iowa),
         ];
 
         for (model_id, expected_location) in test_cases {
@@ -450,6 +497,63 @@ mod tests {
                 _ => panic!("Expected Gemini generic model for {model_id}"),
             }
             assert_eq!(model.to_string(), model_id);
+            assert_eq!(model.known_location(), GcpLocation::Iowa);
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_qwen_model_parsing() -> Result<()> {
+        // Test specific Qwen model
+        let model = GcpVertexAIModel::try_from("qwen3-coder-480b-a35b-instruct-maas")?;
+        assert_eq!(model.to_string(), "qwen3-coder-480b-a35b-instruct-maas");
+        assert_eq!(model.known_location(), GcpLocation::Iowa);
+
+        // Test with qwen/ prefix
+        let model_with_prefix =
+            GcpVertexAIModel::try_from("qwen/qwen3-coder-480b-a35b-instruct-maas")?;
+        assert_eq!(
+            model_with_prefix.to_string(),
+            "qwen3-coder-480b-a35b-instruct-maas"
+        );
+        assert_eq!(model_with_prefix.known_location(), GcpLocation::Iowa);
+
+        // Test RequestContext for Qwen models
+        let context = RequestContext::new("qwen3-coder-480b-a35b-instruct-maas")?;
+        assert_eq!(context.provider(), ModelProvider::Qwen);
+
+        let context_with_prefix = RequestContext::new("qwen/qwen3-coder-480b-a35b-instruct-maas")?;
+        assert_eq!(context_with_prefix.provider(), ModelProvider::Qwen);
+
+        // Test generic Qwen models
+        let qwen_models = ["qwen-coder-v2", "qwen3-turbo", "qwen-experimental"];
+
+        for model_id in qwen_models {
+            let model = GcpVertexAIModel::try_from(model_id)?;
+            match model {
+                GcpVertexAIModel::Qwen(QwenVersion::Generic(ref name)) => {
+                    assert_eq!(name, model_id);
+                }
+                _ => panic!("Expected Qwen generic model for {model_id}"),
+            }
+            assert_eq!(model.to_string(), model_id);
+            assert_eq!(model.known_location(), GcpLocation::Iowa);
+        }
+
+        // Test Qwen models with qwen/ prefix
+        let qwen_prefixed_models = ["qwen/qwen-coder-v2", "qwen/qwen3-turbo"];
+
+        for model_id in qwen_prefixed_models {
+            let model = GcpVertexAIModel::try_from(model_id)?;
+            let expected_name = model_id.strip_prefix("qwen/").unwrap();
+            match model {
+                GcpVertexAIModel::Qwen(QwenVersion::Generic(ref name)) => {
+                    assert_eq!(name, expected_name);
+                }
+                _ => panic!("Expected Qwen generic model for {model_id}"),
+            }
+            assert_eq!(model.to_string(), expected_name);
             assert_eq!(model.known_location(), GcpLocation::Iowa);
         }
 
