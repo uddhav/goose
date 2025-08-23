@@ -115,11 +115,16 @@ pub enum GeminiVersion {
 }
 
 /// Represents available versions of the Qwen model for Goose.
+///
+/// Qwen models are third-party models available through GCP Vertex AI Model Garden.
+/// They provide specialized capabilities for coding and general language tasks.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum QwenVersion {
-    /// Qwen3 Coder 480B Instruct MAAS version
+    /// Qwen3 Coder 480B Instruct MAAS version - A large coding-specialized model
+    /// optimized for software development tasks and code generation
     Coder480BInstructMaas,
-    /// Generic Qwen model for custom or new versions
+    /// Generic Qwen model for custom or new versions not explicitly supported.
+    /// This allows forward compatibility with future Qwen model releases.
     Generic(String),
 }
 
@@ -207,7 +212,9 @@ impl TryFrom<&str> for GcpVertexAIModel {
             }
             _ if s.starts_with("qwen/") => {
                 // Remove the qwen/ prefix for generic parsing
-                let model_name = s.strip_prefix("qwen/").unwrap();
+                let model_name = s
+                    .strip_prefix("qwen/")
+                    .ok_or_else(|| ModelError::UnsupportedModel(s.to_string()))?;
                 Ok(Self::Qwen(QwenVersion::Generic(model_name.to_string())))
             }
             _ if s.starts_with("qwen") => Ok(Self::Qwen(QwenVersion::Generic(s.to_string()))),
@@ -259,7 +266,7 @@ pub enum ModelProvider {
     Anthropic,
     /// Google provider (Gemini models)
     Google,
-    /// Qwen provider (Qwen models)
+    /// Qwen provider (Qwen models from GCP Vertex AI Model Garden)
     Qwen,
 }
 
